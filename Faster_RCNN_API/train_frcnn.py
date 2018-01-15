@@ -5,57 +5,56 @@ import sys
 import time
 import numpy as np
 import pickle
-
+import config
+import math
+import tensorflow as tf
+import keras_frcnn.roi_helpers as roi_helpers
 from keras import backend as K
 from keras.utils import plot_model
 from keras.optimizers import Adam
 from keras.layers import Input
 from keras.models import Model
 from keras_frcnn import data_generators
-import keras_frcnn.roi_helpers as roi_helpers
 from keras.utils import generic_utils
 from keras.callbacks import TensorBoard
-import tensorflow as tf
+from keras.callbacks import EarlyStopping
 from keras_frcnn.simple_parser import get_data
 from keras_frcnn import losses as Losses
-import config
-import math
-
-#%%
+from keras_frcnn import nn_arch_inceptionv3 as arch
 
 sys.setrecursionlimit(40000)
 
-def Train_frcnn(train_path, # path to the text file containing the data
-                network_arch, # the full faster rcnn network architecture object
-                num_epochs, # num of epochs
-                output_weight_path, # path to save the model_all.weights as hdf5
+def Train_frcnn(train_path = "./train_data.txt", # path to the text file containing the data
+                network_arch = arch, # the full faster rcnn network architecture object
+                num_epochs = 1000, # num of epochs
+                output_weight_path "./model_weights.hdf5", # path to save the model_all.weights as hdf5
                 preprocessing_function = None,
-                config_filename="config.pickle", 
-                input_weights_path=None,
+                config_filename = "config.pickle", 
+                input_weights_path = None,
                 train_rpn = True,
                 train_final_classifier = True,
                 train_base_nn = True,
                 losses_to_watch = ['rpn_cls','rpn_reg','final_cls','final_reg'],
-                tb_log_dir="log", 
-                num_rois=32, 
-                horizontal_flips=False,
-                vertical_flips=False, 
-                rot_90=False,
-                anchor_box_scales=[128, 256, 512],
-                anchor_box_ratios=[[1, 1], [1./math.sqrt(2), 2./math.sqrt(2)], [2./math.sqrt(2), 1./math.sqrt(2)]],
-                im_size=600,
-                rpn_stride=16, # depends on network architecture
-                visualize_model=None,
+                tb_log_dir = "log", 
+                num_rois = 32, 
+                horizontal_flips = False,
+                vertical_flips = False, 
+                rot_90 = False,
+                anchor_box_scales = [128, 256, 512],
+                anchor_box_ratios = [[1, 1], [1./math.sqrt(2), 2./math.sqrt(2)], [2./math.sqrt(2), 1./math.sqrt(2)]],
+                im_size = 600,
+                rpn_stride = 16, # depends on network architecture
+                visualize_model = True,
                 verify_trainable = True,
                 optimizer_rpn = Adam(lr=1e-5),
                 optimizer_classifier = Adam(lr=1e-5),
-                validation_interval = 3,
+                validation = True,
                 rpn_min_overlap = 0.3,
                 rpn_max_overlap = 0.7,
                 classifier_min_overlap = 0.1,
                 classifier_max_overlap = 0.5,
                 rpn_nms_threshold = 0.7, # original implementation
-                seed=5000
+                seed = 5000
                 ):
     """
     Trains a Faster RCNN for object detection in keras
@@ -63,10 +62,10 @@ def Train_frcnn(train_path, # path to the text file containing the data
     NOTE: This trains 2 models namely model_rpn and model_classifer with the same shared base_nn (fixed feature extractor)
           
     Keyword Arguments
-    train_path -- str: path to the text file or pascal_voc (no Default)
-    network_arch --object: the full faster rcnn network .py file passed as an object (no default)
-    num_epochs -- int: number of epochs to train (no Default)
-    output_weight_path --str: path to save the frcnn weights (no Default)
+    train_path -- str: path to the text file or pascal_voc (Default './train_data.txt'; save your file as train_data.txt)
+    network_arch --object: the full faster rcnn network .py file passed as an object (Default inceptionv3)
+    num_epochs -- int: number of epochs to train (Default 1000)
+    output_weight_path --str: path to save the frcnn weights (Default './model_weights.hdf5')
     preprocessing_function --function: Optional preprocessing function (must be defined like given in keras docs) (Default None)
     config_filename --str: Path to save the config file. Used when testing (Default "config.pickle")
     input_weight_path --str: Path to hdf5 file containing weights for the model (Default None)
@@ -86,11 +85,11 @@ def Train_frcnn(train_path, # path to the text file containing the data
     anchor_box ratios --list of list: The list of anchorbox aspect ratios to use (Default [[1, 1], [1./math.sqrt(2), 2./math.sqrt(2)], [2./math.sqrt(2), 1./math.sqrt(2)]])
     im_size --int: The size to resize the image (Default 600). This is the smallest side of Pascal VOC format
     rpn_stride --int: The stride for rpn (Default = 16)
-    visualize_model --str: Path to save the model as .png file
+    visualize_model --bool: whether or not to save model as png file (Default True)
     verify_trainable --bool: print layer wise names and prints if it is trainable or not (Default True)
     optimizer_rpn --keras.optimizer: The optimizer for rpn (Default Adam(lr=1e-5))
     optimizer_classifier --keras.optimizer: The optimizer for classifier (Default Adam(lr=1e-5))
-    validation_interval --int: The frequency (in epochs) to do validation. supply 0 if no validation
+    validation --bool: whether or not to validate
     rpn_min_overlap --float: (0,1) The Min IOU in rpn layer (Default 0.3) (original implementation)
     rpn_max_overlap --float: (0,1) The max IOU in rpn layer (Default 0.7) (original implementation)
     classifier_min_overlap --float: (0,1) same as above but in final classifier (Default 0.1) (original implementation)
@@ -138,12 +137,10 @@ def Train_frcnn(train_path, # path to the text file containing the data
         if "final_cls" in losses_to_watch or "final_reg" in losses_to_watch:
             raise ValueError("cannot watch final_cls and final_reg when train_final_classifier == False")
     
-    
     nn = network_arch
     random.seed(seed)
     np.random.seed(seed)
     
-
     # pass the settings from the function call, and persist them in the config object
     C = config.Config()
     C.rpn_max_overlap = rpn_max_overlap
@@ -176,7 +173,6 @@ def Train_frcnn(train_path, # path to the text file containing the data
 
     C.class_mapping = class_mapping
 
-
     print('Training images per class:')
     pprint.pprint(classes_count)
     print('Num classes (including bg) = {}'.format(len(classes_count)))
@@ -187,14 +183,11 @@ def Train_frcnn(train_path, # path to the text file containing the data
 
     np.random.shuffle(all_imgs)
 
-
     train_imgs = [s for s in all_imgs if s['imageset'] == 'train']
     val_imgs = [s for s in all_imgs if s['imageset'] == 'valid']
 
     print('Num train samples {}'.format(len(train_imgs)))
     print('Num val samples {}'.format(len(val_imgs)))
-
-
     
     input_shape_img = (None, None, 3)
     img_input = Input(shape=input_shape_img)
@@ -241,8 +234,12 @@ def Train_frcnn(train_path, # path to the text file containing the data
     model_all.compile(optimizer='sgd', loss='mse')
     # save model_all as png for visualization
     if visualize_model != None:
-        plot_model(model=model_all,to_file=visualize_model,show_shapes=True,show_layer_names=True)
-        
+        plot_model(model=model_rpn,to_file='./model_visual/model_rpn.png',show_shapes=False,show_layer_names=True)
+        plot_model(model=model_classifier,to_file='./model_visual/model_classifier.png',show_shapes=False,show_layer_names=True)
+        plot_model(model=model_all,to_file='./model_visual/model_all.png',show_shapes=False,show_layer_names=True)
+        plot_model(model=model_rpn,to_file='./model_visual/model_rpn_shapes.png',show_shapes=True,show_layer_names=True)
+        plot_model(model=model_classifier,to_file='./model_visual/model_classifier_shapes.png',show_shapes=True,show_layer_names=True)
+        plot_model(model=model_all,to_file='./model_visual/model_all_shapes.png',show_shapes=True,show_layer_names=True)        
             
     epoch_length = len(train_imgs)
     validation_epoch_length=len(val_imgs)
@@ -252,7 +249,6 @@ def Train_frcnn(train_path, # path to the text file containing the data
     # train and valid data generator
     data_gen_train = data_generators.get_anchor_gt(train_imgs, classes_count, C, model_base, K.image_dim_ordering(), preprocessing_function ,mode='train')
     data_gen_val = data_generators.get_anchor_gt(val_imgs, classes_count, C, model_base,K.image_dim_ordering(), preprocessing_function ,mode='val')
-
     
     losses_val=np.zeros((validation_epoch_length,5))
     losses = np.zeros((epoch_length, 5))
@@ -417,152 +413,161 @@ def Train_frcnn(train_path, # path to the text file containing the data
                             print('Total loss decreased from {} to {} in training, saving weights'.format(best_loss,curr_loss))
                             save_log_data = '\nTotal loss decreased from {} to {} in epoch {}/{} in training, saving weights'.format(best_loss,curr_loss,epoch_num + 1,num_epochs)
                             with open("./saving_log.txt","a") as f:
-                                f.write(save_log_data)
-                                
+                                f.write(save_log_data)        
                         best_loss = curr_loss
                         model_all.save_weights(C.weights_all_path)
-
+                    else:
+                        if C.verbose:
+                            print('Total loss changed from {} to {}'.format(best_loss,curr_loss))
+                            save_log_data = '\nTotal loss changed from {} to {} in epoch {}/{} in validation'.format(best_loss,curr_loss,epoch_num + 1 ,num_epochs)
+                            with open("./saving_log.txt","a") as f:
+                                f.write(save_log_data)
+  
+                    EarlyStopping(monitor='curr_loss', min_delta=0, patience=10, verbose=0, mode='min')
                     break
 
             except Exception as e:
                 print('Exception: {}'.format(e))
                 continue
             
-        if validation_interval > 0: 
-            # validation
-            if (epoch_num+1)%validation_interval==0 :
-                progbar = generic_utils.Progbar(validation_epoch_length)
-                print("Validation... \n")
-                while True:
-                    try:
-                        X, Y, img_data = next(data_gen_val)
+    print('Training complete, now validating..')
+    iter_num = 0
+    val_num_epochs = round((1/3)*num_epochs)
+    
+    if validation: 
+        # validation
+        for val_epoch_num in range(val_num_epochs):
+            progbar = generic_utils.Progbar(validation_epoch_length)
+            print("Validation... \n")
+            while True:
+                try:
+                    X, Y, img_data = next(data_gen_val)
+                    
+                    if train_rpn:
+                        val_loss_rpn = model_rpn.test_on_batch(X, Y)
+            
+                    P_rpn = model_rpn.predict_on_batch(X)
+                    R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1], C, K.image_dim_ordering(), use_regr=True, overlap_thresh=C.rpn_nms_threshold,flag="train")
+                    # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
+                    X2, Y1, Y2, IouS = roi_helpers.calc_iou(R, img_data, C, class_mapping)
                         
-                        if train_rpn:
-                            val_loss_rpn = model_rpn.test_on_batch(X, Y)
+                    neg_samples = np.where(Y1[0, :, -1] == 1)
+                    pos_samples = np.where(Y1[0, :, -1] == 0)
             
-                        P_rpn = model_rpn.predict_on_batch(X)
-                        R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1], C, K.image_dim_ordering(), use_regr=True, overlap_thresh=C.rpn_nms_threshold,flag="train")
-                        # note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
-                        X2, Y1, Y2, IouS = roi_helpers.calc_iou(R, img_data, C, class_mapping)
+                    if len(neg_samples) > 0:
+                        neg_samples = neg_samples[0]
+                    else:
+                        neg_samples = []
+            
+                    if len(pos_samples) > 0:
+                        pos_samples = pos_samples[0]
+                    else:
+                        pos_samples = []
                         
-                        neg_samples = np.where(Y1[0, :, -1] == 1)
-                        pos_samples = np.where(Y1[0, :, -1] == 0)
+                    rpn_accuracy_rpn_monitor.append(len(pos_samples))
+                    rpn_accuracy_for_epoch.append((len(pos_samples)))
             
-                        if len(neg_samples) > 0:
-                            neg_samples = neg_samples[0]
-                        else:
-                            neg_samples = []
-            
-                        if len(pos_samples) > 0:
-                            pos_samples = pos_samples[0]
-                        else:
-                            pos_samples = []
-                        
-                        rpn_accuracy_rpn_monitor.append(len(pos_samples))
-                        rpn_accuracy_for_epoch.append((len(pos_samples)))
-            
-                        if C.num_rois > 1:
-                            if len(pos_samples) < C.num_rois//2:
-                                selected_pos_samples = pos_samples.tolist()
-                            else:
-                                selected_pos_samples = np.random.choice(pos_samples, C.num_rois//2, replace=False).tolist()
-                            try:
-                                selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples), replace=False).tolist()
-                            except:
-                                selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples), replace=True).tolist()
-            
-                            sel_samples = selected_pos_samples + selected_neg_samples
-                        else:
-                            # in the extreme case where num_rois = 1, we pick a random pos or neg sample
+                    if C.num_rois > 1:
+                        if len(pos_samples) < C.num_rois//2:
                             selected_pos_samples = pos_samples.tolist()
-                            selected_neg_samples = neg_samples.tolist()
-                            if np.random.randint(0, 2):
-                                sel_samples = random.choice(neg_samples)
-                            else:
-                                sel_samples = random.choice(pos_samples)
-                        if train_final_classifier:
-                            val_loss_class = model_classifier.test_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
-                        
-                        if train_rpn:
-                            losses_val[iter_num, 0] = val_loss_rpn[1]
-                            losses_val[iter_num, 1] = val_loss_rpn[2]
                         else:
-                            losses_val[iter_num, 0] = 0
-                            losses_val[iter_num, 1] = 0
-                            
-                        if train_final_classifier:
-                            losses_val[iter_num, 2] = val_loss_class[1]
-                            losses_val[iter_num, 3] = val_loss_class[2]
-                            losses_val[iter_num, 4] = val_loss_class[3]
+                            selected_pos_samples = np.random.choice(pos_samples, C.num_rois//2, replace=False).tolist()
+                        try:
+                            selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples), replace=False).tolist()
+                        except:
+                            selected_neg_samples = np.random.choice(neg_samples, C.num_rois - len(selected_pos_samples), replace=True).tolist()
+            
+                        sel_samples = selected_pos_samples + selected_neg_samples
+                    else:
+                        # in the extreme case where num_rois = 1, we pick a random pos or neg sample
+                        selected_pos_samples = pos_samples.tolist()
+                        selected_neg_samples = neg_samples.tolist()
+                        if np.random.randint(0, 2):
+                            sel_samples = random.choice(neg_samples)
                         else:
-                            losses_val[iter_num, 2] = 0
-                            losses_val[iter_num, 3] = 0
-                            losses_val[iter_num, 4] = 0
+                            sel_samples = random.choice(pos_samples)
+                    if train_final_classifier:
+                        val_loss_class = model_classifier.test_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
+                      
+                    if train_rpn:
+                        losses_val[iter_num, 0] = val_loss_rpn[1]
+                        losses_val[iter_num, 1] = val_loss_rpn[2]
+                    else:
+                        losses_val[iter_num, 0] = 0
+                        losses_val[iter_num, 1] = 0
                             
+                    if train_final_classifier:
+                        losses_val[iter_num, 2] = val_loss_class[1]
+                        losses_val[iter_num, 3] = val_loss_class[2]
+                        losses_val[iter_num, 4] = val_loss_class[3]
+                    else:
+                        losses_val[iter_num, 2] = 0
+                        losses_val[iter_num, 3] = 0
+                        losses_val[iter_num, 4] = 0
+                           
+                    iter_num += 1
             
-                        iter_num += 1
-            
-                        progbar.update(iter_num, [('rpn_cls', np.mean(losses_val[:iter_num, 0])), ('rpn_regr', np.mean(losses_val[:iter_num, 1])),
+                    progbar.update(iter_num, [('rpn_cls', np.mean(losses_val[:iter_num, 0])), ('rpn_regr', np.mean(losses_val[:iter_num, 1])),
                                                   ('detector_cls', np.mean(losses_val[:iter_num, 2])), ('detector_regr', np.mean(losses_val[:iter_num, 3]))])
             
-                        if iter_num == validation_epoch_length:
-                            if train_rpn:
-                                val_loss_rpn_cls = np.mean(losses_val[:, 0])
-                                val_loss_rpn_regr = np.mean(losses_val[:, 1])
-                            else:
-                                val_loss_rpn_cls = 0
-                                val_loss_rpn_regr = 0
-                            if train_final_classifier:
-                                val_loss_class_cls = np.mean(losses_val[:, 2])
-                                val_loss_class_regr = np.mean(losses_val[:, 3])
-                                val_class_acc = np.mean(losses_val[:, 4])
-                            else:
-                                val_loss_class_cls = 0
-                                val_loss_class_regr = 0
-                                val_class_acc = 0
-                                
+                    if iter_num == validation_epoch_length:
+                        if train_rpn:
+                            val_loss_rpn_cls = np.mean(losses_val[:, 0])
+                            val_loss_rpn_regr = np.mean(losses_val[:, 1])
+                        else:
+                            val_loss_rpn_cls = 0
+                            val_loss_rpn_regr = 0
+                        if train_final_classifier:
+                            val_loss_class_cls = np.mean(losses_val[:, 2])
+                            val_loss_class_regr = np.mean(losses_val[:, 3])
+                            val_class_acc = np.mean(losses_val[:, 4])
+                        else:
+                            val_loss_class_cls = 0
+                            val_loss_class_regr = 0
+                            val_class_acc = 0                         
             
-                            mean_overlapping_bboxes = float(sum(rpn_accuracy_for_epoch)) / len(rpn_accuracy_for_epoch)
-                            rpn_accuracy_for_epoch = []
-                            
-                            loss_dict_valid = {"rpn_cls":val_loss_rpn_cls,"rpn_reg":val_loss_rpn_regr,"final_cls":val_loss_class_cls,"final_reg":val_loss_class_regr}
-                    
-                            val_curr_loss = 0
-                            for l in losses_to_watch:
-                                val_curr_loss += loss_dict_valid[l]
-                                 
-                            write_log(tbCallBack, val_names, [val_loss_rpn_cls,val_loss_rpn_regr,val_loss_class_cls,val_loss_class_regr,val_curr_loss,val_class_acc], epoch_num)
+                        mean_overlapping_bboxes = float(sum(rpn_accuracy_for_epoch)) / len(rpn_accuracy_for_epoch)
+                        rpn_accuracy_for_epoch = []
+                          
+                        loss_dict_valid = {"rpn_cls":val_loss_rpn_cls,"rpn_reg":val_loss_rpn_regr,"final_cls":val_loss_class_cls,"final_reg":val_loss_class_regr}
+                  
+                        val_curr_loss = 0
+                        for l in losses_to_watch:
+                            val_curr_loss += loss_dict_valid[l]
+                               
+                        write_log(tbCallBack, val_names, [val_loss_rpn_cls,val_loss_rpn_regr,val_loss_class_cls,val_loss_class_regr,val_curr_loss,val_class_acc], val_epoch_num)
             
+                        if C.verbose:
+                            print('[INFO VALIDATION]')
+                            print('Mean number of bounding boxes from RPN overlapping ground truth boxes: {}'.format(mean_overlapping_bboxes))
+                            print('Classifier accuracy for bounding boxes from RPN: {}'.format(val_class_acc))
+                            print('Loss RPN classifier: {}'.format(val_loss_rpn_cls))
+                            print('Loss RPN regression: {}'.format(val_loss_rpn_regr))
+                            print('Loss Detector classifier: {}'.format(val_loss_class_cls))
+                            print('Loss Detector regression: {}'.format(val_loss_class_regr))
+                            print("current loss: %.2f, best loss: %.2f at epoch: %d"%(val_curr_loss,val_best_loss,val_best_loss_epoch))
+                            print('Elapsed time: {}'.format(time.time() - start_time))               
+            
+                        if val_curr_loss < val_best_loss:
                             if C.verbose:
-                                print('[INFO VALIDATION]')
-                                print('Mean number of bounding boxes from RPN overlapping ground truth boxes: {}'.format(mean_overlapping_bboxes))
-                                print('Classifier accuracy for bounding boxes from RPN: {}'.format(val_class_acc))
-                                print('Loss RPN classifier: {}'.format(val_loss_rpn_cls))
-                                print('Loss RPN regression: {}'.format(val_loss_rpn_regr))
-                                print('Loss Detector classifier: {}'.format(val_loss_class_cls))
-                                print('Loss Detector regression: {}'.format(val_loss_class_regr))
-                                print("current loss: %.2f, best loss: %.2f at epoch: %d"%(val_curr_loss,val_best_loss,val_best_loss_epoch))
-                                print('Elapsed time: {}'.format(time.time() - start_time))               
-            
-                            if val_curr_loss < val_best_loss:
-                                if C.verbose:
-                                    print('Total loss decreased from {} to {}, saving weights'.format(val_best_loss,val_curr_loss))
-                                    save_log_data = '\nTotal loss decreased from {} to {} in epoch {}/{} in validation, saving weights'.format(val_best_loss,val_curr_loss,epoch_num + 1 ,num_epochs)
-                                    with open("./saving_log.txt","a") as f:
-                                        f.write(save_log_data)
-                                val_best_loss = val_curr_loss
-                                val_best_loss_epoch=epoch_num
-                                model_all.save_weights(C.weights_all_path)
-                            start_time = time.time()
-                            iter_num = 0
-                            break
-                    except:
-                        pass
-        
-        
-
-    print('Training complete, exiting.')
-    
-    
-    
-    
+                                print('Total loss decreased from {} to {}, saving weights'.format(val_best_loss,val_curr_loss))
+                                save_log_data = '\nTotal loss decreased from {} to {} in epoch {}/{} in validation, saving weights'.format(val_best_loss,val_curr_loss,val_epoch_num + 1 ,val_num_epochs)
+                                with open("./saving_log.txt","a") as f:
+                                    f.write(save_log_data)
+                            val_best_loss = val_curr_loss
+                            val_best_loss_epoch=val_epoch_num
+                            model_all.save_weights(C.weights_all_path)
+                        else:
+                            if C.verbose:
+                                print('Total loss changed from {} to {}'.format(val_best_loss,val_curr_loss))
+                                save_log_data = '\nTotal loss changed from {} to {} in epoch {}/{} in validation'.format(val_best_loss,val_curr_loss,val_epoch_num + 1 ,val_num_epochs)
+                                with open("./saving_log.txt","a") as f:
+                                    f.write(save_log_data)
+                        start_time = time.time()
+                        iter_num = 0
+                        EarlyStopping(monitor='val_curr_loss', min_delta=0, patience=10, verbose=0, mode='min')
+                        break
+                except:
+                    pass
+               
+    print('Validation complete, exiting..')
