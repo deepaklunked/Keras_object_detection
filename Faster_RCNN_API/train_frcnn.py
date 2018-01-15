@@ -44,7 +44,7 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
                 anchor_box_ratios = [[1, 1], [1./math.sqrt(2), 2./math.sqrt(2)], [2./math.sqrt(2), 1./math.sqrt(2)]],
                 im_size = 600,
                 rpn_stride = 16, # depends on network architecture
-                visualize_model = True,
+                visualize_model = False,
                 verify_trainable = True,
                 optimizer_rpn = Adam(lr=1e-5),
                 optimizer_classifier = Adam(lr=1e-5),
