@@ -412,15 +412,15 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
                                 
                         best_loss = curr_loss
                         model_all.save_weights(C.weights_all_path)
-						else:
-							if C.verbose:
-                                print('Total loss changed from {} to {} in training'.format(best_loss,curr_loss))
-                                save_log_data = '\nTotal loss changed from {} to {} in epoch {}/{} in training'.format(best_loss,curr_loss,epoch_num + 1,num_epochs)
-                                with open("./saving_log.txt","a") as f:
-                                    f.write(save_log_data)
+			else:
+			    if C.verbose:
+                            print('Total loss changed from {} to {} in training'.format(best_loss,curr_loss))
+                            save_log_data = '\nTotal loss changed from {} to {} in epoch {}/{} in training'.format(best_loss,curr_loss,epoch_num + 1,num_epochs)
+                            with open("./saving_log.txt","a") as f:
+                                f.write(save_log_data)
 
                     EarlyStopping(monitor='curr_loss', min_delta=0, patience=10, verbose=0, mode='min')
-					break
+		    break
 
             except Exception as e:
                 print('Exception: {}'.format(e))
@@ -553,7 +553,7 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
                             val_best_loss_epoch=val_epoch_num
                             model_all.save_weights(C.weights_all_path)
                         else:
-		        	        if C.verbose:
+		            if C.verbose:
                                 print('Total loss changed from {} to {}'.format(val_best_loss,val_curr_loss))
                                 save_log_data = '\nTotal loss changed from {} to {} in epoch {}/{} in validation'.format(val_best_loss,val_curr_loss,val_epoch_num + 1 ,val_num_epochs)
                                 with open("./saving_log.txt","a") as f:
@@ -562,7 +562,7 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
                         start_time = time.time()
                         iter_num = 0
                         EarlyStopping(monitor='val_curr_loss', min_delta=0, patience=10, verbose=0, mode='min')
-			            break
+			break
                 except:
                     pass
 		
