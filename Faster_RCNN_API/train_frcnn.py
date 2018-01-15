@@ -409,8 +409,8 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
                             save_log_data = '\nTotal loss decreased from {} to {} in epoch {}/{} in training, saving weights'.format(best_loss,curr_loss,epoch_num + 1,num_epochs)
                             with open("./saving_log.txt","a") as f:
                                 f.write(save_log_data)
-			    best_loss = curr_loss
-                            model_all.save_weights(C.weights_all_path)	
+			best_loss = curr_loss
+                        model_all.save_weights(C.weights_all_path)	
 		    else:
 		        if C.verbose:
                         print('Total loss changed from {} to {} in training'.format(best_loss,curr_loss))
