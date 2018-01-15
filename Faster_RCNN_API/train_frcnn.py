@@ -27,7 +27,7 @@ sys.setrecursionlimit(40000)
 def Train_frcnn(train_path = "./train_data.txt", # path to the text file containing the data
                 network_arch = arch, # the full faster rcnn network architecture object
                 num_epochs = 1000, # num of epochs
-                output_weight_path "./model_weights.hdf5", # path to save the model_all.weights as hdf5
+                output_weight_path = "./model_weights.hdf5", # path to save the model_all.weights as hdf5
                 preprocessing_function = None,
                 config_filename = "config.pickle", 
                 input_weights_path = None,
