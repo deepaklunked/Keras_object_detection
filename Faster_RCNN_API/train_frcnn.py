@@ -233,7 +233,7 @@ def Train_frcnn(train_path = "./train_data.txt", # path to the text file contain
     model_classifier.compile(optimizer=optimizer_classifier, loss=[Losses.class_loss_cls, Losses.class_loss_regr(len(classes_count)-1)], metrics={'dense_class_{}'.format(len(classes_count)): 'accuracy'})
     model_all.compile(optimizer='sgd', loss='mse')
     # save model_all as png for visualization
-    if visualize_model != None:
+    if visualize_model:
         plot_model(model=model_rpn,to_file='./model_visual/model_rpn.png',show_shapes=False,show_layer_names=True)
         plot_model(model=model_classifier,to_file='./model_visual/model_classifier.png',show_shapes=False,show_layer_names=True)
         plot_model(model=model_all,to_file='./model_visual/model_all.png',show_shapes=False,show_layer_names=True)
