@@ -13,7 +13,7 @@ from keras_frcnn import nn_arch_inceptionv3 as arch
 
 sys.setrecursionlimit(40000)
 
-def Test_frcnn(test_images_list = "./test_samples/",  
+def Test_frcnn(test_images_list = ["./test_samples/"],  
                network_arch = arch,
                config_filename = "./config.pickle",
                preprocessing_function = None,
