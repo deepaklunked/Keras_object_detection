@@ -9,11 +9,12 @@ from keras_frcnn import roi_helpers
 import pandas as pd
 from keras.layers import Input
 from keras.models import Model
+from keras_frcnn import nn_arch_inceptionv3 as arch
 
 sys.setrecursionlimit(40000)
 
-def Test_frcnn(test_images_list,  
-               network_arch,
+def Test_frcnn(test_images_list = "./test_samples/",  
+               network_arch = arch,
                config_filename,
                preprocessing_function = None,
                num_rois = None,
@@ -214,9 +215,9 @@ def Test_frcnn(test_images_list,
                 (retval,baseLine) = cv2.getTextSize(textLabel,cv2.FONT_HERSHEY_COMPLEX,1,1)
                 textOrg = (real_x1, real_y1-0)
 
-                cv2.rectangle(img, (textOrg[0] - 5, textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (0, 0, 0), 2)
-                cv2.rectangle(img, (textOrg[0] - 5,textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (255, 255, 255), -1)
-                cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
+                #cv2.rectangle(img, (textOrg[0] - 5, textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (0, 0, 0), 2)
+                #cv2.rectangle(img, (textOrg[0] - 5,textOrg[1]+baseLine - 5), (textOrg[0]+retval[0] + 5, textOrg[1]-retval[1] - 5), (255, 255, 255), -1)
+                #cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
             
         df = pd.DataFrame({"Image_name":img_name_list,
                            "classes":classes_list,
