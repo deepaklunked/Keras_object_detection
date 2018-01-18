@@ -15,7 +15,7 @@ sys.setrecursionlimit(40000)
 
 def Test_frcnn(test_images_list = "./test_samples/",  
                network_arch = arch,
-               config_filename,
+               config_filename = "./config.pickle",
                preprocessing_function = None,
                num_rois = None,
                final_classification_threshold = 0.8):
@@ -25,7 +25,7 @@ def Test_frcnn(test_images_list = "./test_samples/",
     
     test_images_list --list: list containing path to test_images (Default './test_samples/')
     network_arc --object: the full faster rcnn network .py file passed as an object (Default inceptionv3)
-    config_filename --str: Full path to the config_file.pickle, generated while training (No default)
+    config_filename --str: Full path to the config_file.pickle, generated while training (Default './config.pickle')
     preprocessing_function --function: optional image preprocessing function (Default None)
     num_rois --int: (optional)The number of ROIs to process at once in the final classifier (Default None)
                     if not given. The number of ROIs given while training is chosen
